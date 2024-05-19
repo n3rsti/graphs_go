@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 )
 
 var (
@@ -32,6 +36,163 @@ func reverse(s []int) {
 
 type AdjacencyMatrix struct {
 	graph [][]int
+}
+
+func NewAdjacencyMatrix(vertices int) *AdjacencyMatrix {
+	graph := make([][]int, vertices)
+	for i := range graph {
+		graph[i] = make([]int, vertices)
+	}
+	return &AdjacencyMatrix{graph: graph}
+}
+
+func NewGraphMatrix(vertices int) *GraphMatrix {
+	graph := make([][]int, vertices)
+	for i := range graph {
+		graph[i] = make([]int, vertices+3)
+	}
+	return &GraphMatrix{graph: graph}
+}
+
+func (m *AdjacencyMatrix) addEdge(v1, v2 int) {
+	m.graph[v1][v2] = 1
+}
+
+func (m *GraphMatrix) addEdge(v1, v2 int) {
+	m.graph[v1][v2] = 1
+}
+func buildAdjacencyMatrixFromFile(filename string) (*AdjacencyMatrix, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	if !scanner.Scan() {
+		return nil, fmt.Errorf("eof")
+	}
+	firstLine := scanner.Text()
+	parts := strings.Fields(firstLine)
+
+	numVertices, err := strconv.Atoi(parts[0])
+	graph := NewAdjacencyMatrix(numVertices)
+
+	numEdges, err := strconv.Atoi(parts[1])
+
+	for i := 0; i < numEdges; i++ {
+		if !scanner.Scan() {
+			return nil, fmt.Errorf("eof")
+		}
+		line := scanner.Text()
+		edgeParts := strings.Fields(line)
+
+		v1, _ := strconv.Atoi(edgeParts[0])
+		v2, _ := strconv.Atoi(edgeParts[1])
+		graph.addEdge(v1-1, v2-1)
+	}
+
+	return graph, nil
+}
+
+func (m *GraphMatrix) populateMatrix(successors, predecessors, nonIncident [][]int) {
+	numVertices := len(m.graph)
+
+	for i := 0; i < numVertices; i++ {
+		if len(successors[i]) > 0 {
+			m.graph[i][numVertices] = successors[i][0]
+			for j := 0; j < len(successors[i]); j++ {
+				next := successors[i][j]
+				if j == len(successors[i])-1 {
+					m.graph[i][next-1] = next
+				} else {
+					m.graph[i][next-1] = successors[i][j+1]
+				}
+			}
+		} else {
+			m.graph[i][numVertices] = 0
+		}
+	}
+
+	for i := 0; i < numVertices; i++ {
+		if len(predecessors[i]) > 0 {
+			m.graph[i][numVertices+1] = predecessors[i][0]
+			for j := 0; j < len(predecessors[i]); j++ {
+				next := predecessors[i][j]
+				if j == len(predecessors[i])-1 {
+					m.graph[i][next-1] = next + numVertices
+				} else {
+					m.graph[i][next-1] = predecessors[i][j+1] + numVertices
+				}
+			}
+		} else {
+			m.graph[i][numVertices+1] = 0
+		}
+	}
+
+	for i := 0; i < numVertices; i++ {
+		if len(nonIncident[i]) > 0 {
+			m.graph[i][numVertices+2] = nonIncident[i][0]
+			for j := 0; j < len(nonIncident[i]); j++ {
+				next := nonIncident[i][j]
+				if j == len(nonIncident[i])-1 {
+					m.graph[i][next-1] = -next
+				} else {
+					m.graph[i][next-1] = -nonIncident[i][j+1]
+				}
+			}
+		} else {
+			m.graph[i][numVertices+2] = 0
+		}
+	}
+}
+
+func readGraphFromFile(filename string) (*GraphMatrix, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Scan()
+	header := strings.Fields(scanner.Text())
+
+	numVertices, err := strconv.Atoi(header[0])
+	if err != nil {
+		return nil, err
+	}
+
+	edges := [][]int{}
+	for scanner.Scan() {
+		edge := strings.Fields(scanner.Text())
+
+		v1, _ := strconv.Atoi(edge[0])
+
+		v2, _ := strconv.Atoi(edge[1])
+
+		edges = append(edges, []int{v1, v2})
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	graph := NewGraphMatrix(numVertices)
+
+	successors := make([][]int, numVertices)
+	predecessors := make([][]int, numVertices)
+	nonIncident := make([][]int, numVertices)
+
+	for _, edge := range edges {
+		v1, v2 := edge[0]-1, edge[1]-1
+		successors[v1] = append(successors[v1], v2+1)
+		predecessors[v2] = append(predecessors[v2], v1+1)
+	}
+
+	graph.populateMatrix(successors, predecessors, nonIncident)
+	return graph, nil
 }
 
 type GraphMatrix struct {
@@ -234,13 +395,17 @@ func (m GraphMatrix) topologicalSortKahn() ([]int, bool) {
 }
 
 func main() {
-	graph := AdjacencyMatrix{
-		graph: exampleAdjecencyMatrix,
-	}
+	// graph := AdjacencyMatrix{
+	// 	graph: exampleAdjecencyMatrix,
+	// }
+	//
+	// if sorted, cycle := graph.topologicalSortKahn(); !cycle {
+	// 	fmt.Println(sorted)
+	// } else {
+	// 	fmt.Println(CYCLE_MESSAGE)
+	// }
 
-	if sorted, cycle := graph.topologicalSortKahn(); !cycle {
-		fmt.Println(sorted)
-	} else {
-		fmt.Println(CYCLE_MESSAGE)
-	}
+	m, _ := buildAdjacencyMatrixFromFile("graph.txt")
+	fmt.Println(m.graph)
+
 }
